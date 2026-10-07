@@ -120,6 +120,29 @@ class TaskStore:
             rows = await cursor.fetchall()
         return [_row_to_task(row) for row in rows]
 
+    async def recover_stuck(self) -> int:
+        """Re-queue tasks left in processing (e.g. after crash)."""
+        now = _now_iso()
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE tasks
+                SET status = ?, updated_at = ?
+                WHERE status = ?
+                """,
+                (TaskStatus.PENDING.value, now, TaskStatus.PROCESSING.value),
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    async def count_by_status(self) -> dict[str, int]:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
+            )
+            rows = await cursor.fetchall()
+        return {row[0]: row[1] for row in rows}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

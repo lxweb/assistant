@@ -1,0 +1,30 @@
+[Unit]
+Description=Telegram personal assistant (Ollama)
+Documentation=https://github.com/lxweb/assistant
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=600
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lisandro/proyectos/assistant
+EnvironmentFile=/home/lisandro/proyectos/assistant/.env
+ExecStart=/home/lisandro/proyectos/assistant/.venv/bin/assistant
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+SuccessExitStatus=0 143
+KillMode=control-group
+
+Environment=HOME=/home/lisandro
+Environment=USER=lisandro
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/lisandro/proyectos/assistant/.venv/bin:/home/lisandro/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=assistant
+
+[Install]
+WantedBy=default.target

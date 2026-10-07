@@ -1,18 +1,33 @@
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 
 from assistant.agent import TaskAgent
 from assistant.bot import build_application
 from assistant.config import Config
+from assistant.memory import ConversationStore
+from assistant.scheduler import SchedulerStore
 from assistant.tasks import TaskStore
+from assistant.tools import ToolExecutor
+from assistant.vault import VaultSearch
 
 
-def main() -> None:
+def _setup_logging(log_file: str | None) -> None:
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(
+            RotatingFileHandler(
+                log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+            )
+        )
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
+        handlers=handlers,
     )
 
+
+def main() -> None:
     try:
         config = Config.from_env()
     except ValueError as exc:
@@ -20,9 +35,15 @@ def main() -> None:
         print("Copia .env.example a .env y completa los valores.", file=sys.stderr)
         sys.exit(1)
 
+    _setup_logging(str(config.log_file) if config.log_file else None)
+
     store = TaskStore(config.database_path)
-    agent = TaskAgent(config)
-    app = build_application(config, store, agent)
+    memory = ConversationStore(config.database_path)
+    scheduler = SchedulerStore(config.database_path)
+    vault = VaultSearch(config.vault_path)
+    tools = ToolExecutor(config, vault)
+    agent = TaskAgent(config, memory, tools)
+    app = build_application(config, store, memory, scheduler, agent)
 
     logging.info("Iniciando bot de Telegram...")
     app.run_polling(drop_pending_updates=True)

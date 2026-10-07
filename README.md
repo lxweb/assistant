@@ -1,128 +1,104 @@
 # Assistant — Asistente personal via Telegram
 
-Asistente al que puedes asignar tareas enviando mensajes por Telegram. Procesa cada tarea con un modelo de IA y te responde con el resultado.
+Asistente al que puedes asignar tareas enviando mensajes por Telegram. Procesa cada tarea con Ollama local, recuerda el contexto, puede consultar tu KnowledgeVault y ejecutar comandos permitidos.
 
 ## Requisitos
 
 - Python 3.11+
-- [Ollama](https://ollama.com) instalado y corriendo (backend local de IA)
-- Un bot de Telegram (crear con [@BotFather](https://t.me/BotFather))
+- [Ollama](https://ollama.com) instalado y corriendo
+- Bot de Telegram ([@BotFather](https://t.me/BotFather))
+- (Opcional) KnowledgeVault/Obsidian para herramientas de búsqueda
 
 ## Instalación
 
 ```bash
-# Clonar / entrar al proyecto
+git clone https://github.com/lxweb/assistant.git
 cd assistant
-
-# Crear entorno virtual
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-
-# Instalar dependencias
 pip install -e .
-
-# Configurar variables de entorno
 cp .env.example .env
-# Editar .env con tus valores
+# Editar .env
 ```
 
 ## Configuración
 
-Edita el archivo `.env`:
-
 | Variable | Descripción |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Token del bot (de @BotFather) |
-| `TELEGRAM_ALLOWED_USERS` | Tu ID de Telegram (separados por coma si son varios) |
+| `TELEGRAM_BOT_TOKEN` | Token del bot |
+| `TELEGRAM_ALLOWED_USERS` | IDs de Telegram autorizados |
 | `OPENAI_API_KEY` | `ollama` para uso local |
 | `OPENAI_BASE_URL` | `http://localhost:11434/v1` |
-| `OPENAI_MODEL` | Modelo de Ollama (default: `llama3.1:8b-16k`) |
-
-### Obtener tu ID de Telegram
-
-1. Escribe a [@userinfobot](https://t.me/userinfobot) en Telegram
-2. Te responderá con tu ID numérico
-3. Ponlo en `TELEGRAM_ALLOWED_USERS`
-
-### Crear el bot
-
-1. Escribe a [@BotFather](https://t.me/BotFather)
-2. Envía `/newbot`
-3. Sigue las instrucciones y copia el token en `TELEGRAM_BOT_TOKEN`
+| `OPENAI_MODEL` | Modelo Ollama (default: `llama3.1:8b-16k`) |
+| `VAULT_PATH` | Ruta al vault Obsidian |
+| `MEMORY_MAX_MESSAGES` | Mensajes de contexto por usuario |
+| `SHELL_ALLOWED_PREFIXES` | Comandos shell permitidos |
+| `RATE_LIMIT_PER_MINUTE` | Límite de mensajes por minuto |
 
 ## Uso
 
 ```bash
-# Iniciar el bot
 assistant
-# o
-python -m assistant.main
 ```
 
-### Comandos de Telegram
+### Comandos Telegram
 
 | Comando | Descripción |
 |---|---|
-| `/start` | Iniciar el bot |
-| `/help` | Ver ayuda |
-| `/tareas` | Listar tus últimas tareas |
-| `/tarea <id>` | Ver detalle de una tarea |
+| `/start` | Iniciar |
+| `/help` | Ayuda |
+| `/tareas` | Listar tareas |
+| `/tarea <id>` | Detalle de tarea |
+| `/status` | Estado del bot y servicios |
+| `/limpiar` | Borrar memoria conversacional |
+| `/recordar 30m <tarea>` | Programar recordatorio |
+| `/recordatorios` | Ver recordatorios pendientes |
+| *texto* | Asignar tarea |
 
-### Asignar tareas
+## Systemd
 
-Simplemente envía un mensaje de texto al bot:
-
-```
-Resume los puntos clave de machine learning
-```
-
-```
-Escribe un email para pedir una reunión con el equipo de producto
-```
-
-```
-Explícame qué es un webhook y cuándo usarlo
+```bash
+./deploy/install-service.sh
+systemctl --user start assistant
+journalctl --user -u assistant -f
 ```
 
-El bot confirmará la recepción, procesará la tarea con IA y te enviará el resultado.
+## Tests y CI
 
-## Modelos disponibles
-
-El proyecto usa Ollama localmente. Modelos detectados en tu sistema:
-
-| Modelo | Uso recomendado |
-|---|---|
-| `llama3.1:8b-16k` | Default — buen balance velocidad/calidad |
-| `qwen3.5:0.8b` | Respuestas rápidas, tareas simples |
-| `qwen3.5:27b-64k` | Máxima calidad, más lento |
-
-Cambia `OPENAI_MODEL` en `.env` para usar otro modelo.
-
-## Alternativa: OpenAI (cloud)
-
-```env
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-# Elimina o comenta OPENAI_BASE_URL
+```bash
+pip install -e ".[dev]"
+pytest
 ```
 
-## Estructura del proyecto
+GitHub Actions ejecuta tests en cada push a `main`.
+
+## Estructura
 
 ```
 assistant/
 ├── src/assistant/
-│   ├── main.py      # Punto de entrada
-│   ├── bot.py       # Handlers de Telegram
-│   ├── agent.py     # Procesamiento con IA
-│   ├── tasks.py     # Persistencia de tareas
-│   └── config.py    # Configuración
-├── data/            # Base de datos SQLite (auto-creada)
-├── .env.example
-└── pyproject.toml
+│   ├── main.py        # Entry point
+│   ├── bot.py         # Handlers Telegram
+│   ├── agent.py       # Agente con memoria + tools
+│   ├── tasks.py       # Tareas SQLite
+│   ├── memory.py      # Memoria conversacional
+│   ├── scheduler.py   # Recordatorios
+│   ├── vault.py       # Búsqueda KnowledgeVault
+│   ├── tools.py       # Herramientas (vault, shell)
+│   └── config.py
+├── deploy/            # Systemd unit
+├── tests/
+└── data/              # SQLite (gitignored)
 ```
+
+## Documentación
+
+Inventario completo en KnowledgeVault: `Projects/assistant/`
+
+Tablero Wekan: http://wekan.home.lan/b/dM5RW7up2ab94nH4d/assistant
 
 ## Seguridad
 
-- Solo los usuarios listados en `TELEGRAM_ALLOWED_USERS` pueden interactuar con el bot
-- No commitees el archivo `.env` (está en `.gitignore`)
-- El bot token y la API key son secretos
+- Solo usuarios en `TELEGRAM_ALLOWED_USERS`
+- Shell restringido por whitelist de prefijos
+- `.env` nunca se commitea
