@@ -35,7 +35,19 @@ cp .env.example .env
 | `SHELL_ALLOWED_PREFIXES` | Comandos shell permitidos |
 | `RATE_LIMIT_PER_MINUTE` | Límite de mensajes por minuto |
 
-## Uso
+## Docker (recomendado en servidor)
+
+Ollama corre en el **host** (GPU). El bot corre en Docker y se conecta via `host.docker.internal`.
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+curl http://127.0.0.1:10850/health
+```
+
+Imagen: **`assistant:latest`** (build local desde `Dockerfile`).
+
+## Uso local (sin Docker)
 
 ```bash
 assistant
@@ -57,10 +69,16 @@ assistant
 
 ## Systemd
 
+**Docker (servidor):**
+```bash
+sudo cp deploy/assistant-docker.service /etc/systemd/system/
+sudo systemctl enable --now assistant-docker
+```
+
+**Nativo (dev):**
 ```bash
 ./deploy/install-service.sh
 systemctl --user start assistant
-journalctl --user -u assistant -f
 ```
 
 ## Tests y CI

@@ -16,6 +16,7 @@ from telegram.ext import (
 
 from assistant.agent import TaskAgent
 from assistant.config import Config
+from assistant.health import start_health_server
 from assistant.memory import ConversationStore
 from assistant.scheduler import SchedulerStore, parse_schedule_args, scheduler_loop
 from assistant.tasks import (
@@ -293,6 +294,20 @@ async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.exception("Error no manejado", exc_info=context.error)
 
 
+async def _health_status(application: Application) -> dict:
+    config: Config = application.bot_data["config"]
+    store: TaskStore = application.bot_data["store"]
+    ollama_ok = await _check_ollama(config)
+    return {
+        "status": "ok" if ollama_ok else "degraded",
+        "service": "assistant",
+        "model": config.openai_model,
+        "ollama": ollama_ok,
+        "vault": config.vault_path is not None and config.vault_path.is_dir(),
+        "tasks": await store.count_by_status(),
+    }
+
+
 async def _init_app(application: Application) -> None:
     store: TaskStore = application.bot_data["store"]
     memory: ConversationStore = application.bot_data["memory"]
@@ -312,7 +327,12 @@ async def _init_app(application: Application) -> None:
     asyncio.create_task(
         scheduler_loop(application, config.scheduler_interval_seconds)
     )
-    logger.info("Base de datos y scheduler inicializados")
+
+    async def status_fn() -> dict:
+        return await _health_status(application)
+
+    await start_health_server(config.health_host, config.health_port, status_fn)
+    logger.info("Base de datos, scheduler y health server inicializados")
 
 
 def build_application(

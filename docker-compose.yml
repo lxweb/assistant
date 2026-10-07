@@ -1,0 +1,34 @@
+# assistant — Telegram bot + Ollama (host GPU)
+#
+# Ollama runs on the host. From the container use host.docker.internal:11434
+#
+# Usage:
+#   cp .env.example .env   # edit secrets
+#   docker compose up -d --build
+#   curl http://127.0.0.1:10850/health
+
+services:
+  assistant:
+    build: .
+    image: assistant:latest
+    container_name: assistant
+    restart: unless-stopped
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${ASSISTANT_HOST_BIND:-127.0.0.1}:${ASSISTANT_HOST_PORT:-10850}:8080"
+    environment:
+      # Override .env — localhost no alcanza Ollama en el host desde el container
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      VAULT_PATH: /vault
+      DATABASE_PATH: /app/data/tasks.db
+      LOG_FILE: /app/data/assistant.log
+      HEALTH_HOST: 0.0.0.0
+      HEALTH_PORT: 8080
+    volumes:
+      - assistant-data:/app/data
+      - ${VAULT_HOST_PATH:-/home/lisandro/KnowledgeVault/KnowledgeVault}:/vault:ro
+
+volumes:
+  assistant-data:

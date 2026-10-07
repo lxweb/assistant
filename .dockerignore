@@ -1,0 +1,12 @@
+.env
+.venv
+venv
+__pycache__
+*.py[cod]
+.git
+.github
+data
+*.db
+deploy/assistant.service
+.pytest_cache
+htmlcov

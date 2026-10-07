@@ -21,6 +21,8 @@ class Config:
     rate_limit_per_minute: int
     log_file: Path | None
     scheduler_interval_seconds: int
+    health_host: str
+    health_port: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -75,4 +77,6 @@ class Config:
             scheduler_interval_seconds=int(
                 os.getenv("SCHEDULER_INTERVAL_SECONDS", "30")
             ),
+            health_host=os.getenv("HEALTH_HOST", "127.0.0.1"),
+            health_port=int(os.getenv("HEALTH_PORT", "8080")),
         )
