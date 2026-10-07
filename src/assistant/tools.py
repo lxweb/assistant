@@ -48,7 +48,9 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "wekan_list_boards",
-            "description": "Lista los tableros kanban disponibles en Wekan.",
+            "description": (
+                "Lista los boards (tableros kanban) del espacio de trabajo Wekan."
+            ),
             "parameters": {"type": "object", "properties": {}},
         },
     },

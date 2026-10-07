@@ -69,12 +69,14 @@ assistant
 
 ### Wekan
 
-El asistente puede interactuar con Wekan si está configurado (`WEKAN_API_*` en `.env`):
+`/boards` — muestra tu espacio de trabajo y tableros con conteo de cards por lista.
 
-- Listar tableros y cards
+El asistente también puede gestionar Wekan por mensaje natural:
+
+- Listar boards y cards
 - Crear, mover y actualizar cards
 
-Ejemplo: *"¿Qué hay pendiente en el tablero assistant?"*
+Ejemplo: *"¿Qué hay pendiente en el board assistant?"*
 
 ## Systemd
 

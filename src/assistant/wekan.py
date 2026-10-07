@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class WekanBoard:
     id: str
     title: str
+    slug: str | None = None
 
 
 @dataclass
@@ -28,11 +29,19 @@ class WekanCard:
 
 
 class WekanClient:
-    def __init__(self, api_url: str, token: str, author_id: str, user_id: str) -> None:
+    def __init__(
+        self,
+        api_url: str,
+        token: str,
+        author_id: str,
+        user_id: str,
+        public_url: str = "http://wekan.home.lan",
+    ) -> None:
         self._api_url = api_url.rstrip("/")
         self._token = token
         self._author_id = author_id
         self._user_id = user_id
+        self._public_url = public_url.rstrip("/")
 
     @property
     def available(self) -> bool:
@@ -61,9 +70,39 @@ class WekanClient:
             logger.exception("Wekan no responde")
             return False
 
+    async def get_user(self) -> dict:
+        return await self._request("GET", "/user")
+
     async def list_boards(self) -> list[WekanBoard]:
         data = await self._request("GET", f"/users/{self._user_id}/boards")
         return [WekanBoard(id=b["_id"], title=b["title"]) for b in data]
+
+    async def workspace_overview(self) -> str:
+        user = await self.get_user()
+        username = user.get("username", "unknown")
+        boards = await self.list_boards()
+
+        lines = [
+            f"📋 *Espacio de trabajo:* {username}",
+            f"*Boards* ({len(boards)}):\n",
+        ]
+        for board in boards:
+            detail = await self._request("GET", f"/boards/{board.id}")
+            slug = detail.get("slug", board.id)
+            lists = await self.list_lists(board.id)
+            list_parts: list[str] = []
+            for lst in lists:
+                cards = await self._request(
+                    "GET", f"/boards/{board.id}/lists/{lst.id}/cards"
+                )
+                list_parts.append(f"{lst.title} ({len(cards)})")
+
+            url = f"{self._public_url}/b/{board.id}/{slug}"
+            lines.append(f"• *{board.title}*")
+            if list_parts:
+                lines.append(f"  Listas: {', '.join(list_parts)}")
+            lines.append(f"  {url}\n")
+        return "\n".join(lines).strip()
 
     async def find_board(self, name: str) -> WekanBoard | None:
         name_lower = name.lower().strip()

@@ -54,6 +54,7 @@ def main() -> None:
             config.wekan_api_token,
             config.wekan_author_id,
             config.wekan_user_id,
+            config.wekan_public_url,
         )
     tools = ToolExecutor(config, vault, wekan)
     agent = TaskAgent(config, memory, tools)

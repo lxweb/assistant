@@ -26,7 +26,6 @@ from assistant.tasks import (
     format_task,
     format_task_list,
 )
-from assistant.projects import list_projects
 from assistant.utils import RateLimiter, send_long_message
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ HELP_TEXT = """\
 /limpiar — Borrar memoria conversacional
 /recordar \\<cuándo\\> \\<tarea\\> — Programar recordatorio
 /recordatorios — Ver recordatorios pendientes
-/projects — Lista de proyectos \\(KnowledgeVault\\)
+/boards — Espacio de trabajo y tableros Wekan
 
 *Asignar tareas:*
 Envía un mensaje de texto con la tarea que quieres procesar.
@@ -215,12 +214,14 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
-async def projects_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def boards_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _check_access(update, context):
         return
-    config: Config = context.bot_data["config"]
     wekan: WekanClient | None = context.bot_data.get("wekan")
-    text = await list_projects(config.vault_path, wekan)
+    if not wekan or not wekan.available:
+        await update.message.reply_text("Wekan no está configurado.")
+        return
+    text = await wekan.workspace_overview()
     await send_long_message(
         update.get_bot(),
         update.effective_chat.id,
@@ -399,7 +400,7 @@ def build_application(
     app.add_handler(CommandHandler("limpiar", clear_memory_command))
     app.add_handler(CommandHandler("recordar", remind_command))
     app.add_handler(CommandHandler("recordatorios", list_reminders_command))
-    app.add_handler(CommandHandler("projects", projects_command))
+    app.add_handler(CommandHandler("boards", boards_command))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )

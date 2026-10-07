@@ -27,6 +27,7 @@ class Config:
     wekan_api_token: str | None
     wekan_author_id: str | None
     wekan_user_id: str | None
+    wekan_public_url: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -87,4 +88,5 @@ class Config:
             wekan_api_token=os.getenv("WEKAN_API_TOKEN") or None,
             wekan_author_id=os.getenv("WEKAN_AUTHOR_ID") or None,
             wekan_user_id=os.getenv("WEKAN_USER_ID") or None,
+            wekan_public_url=os.getenv("WEKAN_PUBLIC_URL", "http://wekan.home.lan"),
         )
