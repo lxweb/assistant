@@ -17,6 +17,7 @@ from telegram.ext import (
 from assistant.agent import TaskAgent
 from assistant.config import Config
 from assistant.health import start_health_server
+from assistant.wekan import WekanClient
 from assistant.memory import ConversationStore
 from assistant.scheduler import SchedulerStore, parse_schedule_args, scheduler_loop
 from assistant.tasks import (
@@ -146,15 +147,27 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     scheduler: SchedulerStore = context.bot_data["scheduler"]
 
     ollama_ok = await _check_ollama(config)
+    wekan: WekanClient | None = context.bot_data.get("wekan")
+    wekan_ok = (
+        await wekan.check_connection()
+        if wekan and wekan.available
+        else None
+    )
     counts = await store.count_by_status()
     user = update.effective_user
     recent = await memory.get_recent(user.id, 1)
     pending_reminders = await scheduler.list_by_user(user.id)
 
+    wekan_line = (
+        f"Wekan: {'✅ OK' if wekan_ok else '❌ no responde'}"
+        if wekan_ok is not None
+        else "Wekan: ❌ no configurado"
+    )
     lines = [
         "*Estado del asistente*",
         f"Modelo: `{config.openai_model}`",
         f"Ollama: {'✅ OK' if ollama_ok else '❌ no responde'}",
+        wekan_line,
         f"Vault: {'✅ ' + str(config.vault_path) if config.vault_path else '❌ no configurado'}",
         f"Tareas: {counts}",
         f"Memoria: {'activa' if recent else 'vacía'}",
@@ -298,12 +311,16 @@ async def _health_status(application: Application) -> dict:
     config: Config = application.bot_data["config"]
     store: TaskStore = application.bot_data["store"]
     ollama_ok = await _check_ollama(config)
+    wekan: WekanClient | None = application.bot_data.get("wekan")
+    wekan_ok = await wekan.check_connection() if wekan and wekan.available else False
+    healthy = ollama_ok and (wekan_ok or not (wekan and wekan.available))
     return {
-        "status": "ok" if ollama_ok else "degraded",
+        "status": "ok" if healthy else "degraded",
         "service": "assistant",
         "model": config.openai_model,
         "ollama": ollama_ok,
         "vault": config.vault_path is not None and config.vault_path.is_dir(),
+        "wekan": wekan_ok if wekan and wekan.available else None,
         "tasks": await store.count_by_status(),
     }
 
@@ -341,6 +358,7 @@ def build_application(
     memory: ConversationStore,
     scheduler: SchedulerStore,
     agent: TaskAgent,
+    wekan: WekanClient | None = None,
 ) -> Application:
     app = (
         Application.builder()
@@ -354,6 +372,7 @@ def build_application(
     app.bot_data["memory"] = memory
     app.bot_data["scheduler"] = scheduler
     app.bot_data["agent"] = agent
+    app.bot_data["wekan"] = wekan
     app.bot_data["rate_limiter"] = RateLimiter(config.rate_limit_per_minute)
 
     app.add_handler(CommandHandler("start", start_command))

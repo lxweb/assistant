@@ -23,6 +23,10 @@ class Config:
     scheduler_interval_seconds: int
     health_host: str
     health_port: int
+    wekan_api_url: str | None
+    wekan_api_token: str | None
+    wekan_author_id: str | None
+    wekan_user_id: str | None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -79,4 +83,8 @@ class Config:
             ),
             health_host=os.getenv("HEALTH_HOST", "127.0.0.1"),
             health_port=int(os.getenv("HEALTH_PORT", "8080")),
+            wekan_api_url=os.getenv("WEKAN_API_URL") or None,
+            wekan_api_token=os.getenv("WEKAN_API_TOKEN") or None,
+            wekan_author_id=os.getenv("WEKAN_AUTHOR_ID") or None,
+            wekan_user_id=os.getenv("WEKAN_USER_ID") or None,
         )

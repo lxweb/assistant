@@ -65,7 +65,16 @@ assistant
 | `/limpiar` | Borrar memoria conversacional |
 | `/recordar 30m <tarea>` | Programar recordatorio |
 | `/recordatorios` | Ver recordatorios pendientes |
-| *texto* | Asignar tarea |
+| *texto* | Asignar tarea (puede usar Wekan, vault, etc.) |
+
+### Wekan
+
+El asistente puede interactuar con Wekan si está configurado (`WEKAN_API_*` en `.env`):
+
+- Listar tableros y cards
+- Crear, mover y actualizar cards
+
+Ejemplo: *"¿Qué hay pendiente en el tablero assistant?"*
 
 ## Systemd
 

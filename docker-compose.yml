@@ -26,6 +26,7 @@ services:
       LOG_FILE: /app/data/assistant.log
       HEALTH_HOST: 0.0.0.0
       HEALTH_PORT: 8080
+      WEKAN_API_URL: http://host.docker.internal:10550/api
     volumes:
       - assistant-data:/app/data
       - ${VAULT_HOST_PATH:-/home/lisandro/KnowledgeVault/KnowledgeVault}:/vault:ro

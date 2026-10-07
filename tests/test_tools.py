@@ -27,6 +27,10 @@ async def test_run_shell_rejects_disallowed() -> None:
         scheduler_interval_seconds=30,
         health_host="127.0.0.1",
         health_port=8080,
+        wekan_api_url=None,
+        wekan_api_token=None,
+        wekan_author_id=None,
+        wekan_user_id=None,
     )
     tools = ToolExecutor(config, VaultSearch(None))
     result = await tools.execute("run_shell", '{"command": "rm -rf /"}')
