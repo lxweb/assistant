@@ -10,6 +10,8 @@ from assistant.scheduler import SchedulerStore
 from assistant.tasks import TaskStore
 from assistant.tools import ToolExecutor
 from assistant.vault import VaultSearch
+from assistant.user_prefs import UserPrefsStore
+from assistant.speech import SpeechClient
 from assistant.wekan import WekanClient
 
 
@@ -40,6 +42,7 @@ def main() -> None:
 
     store = TaskStore(config.database_path)
     memory = ConversationStore(config.database_path)
+    prefs = UserPrefsStore(config.database_path)
     scheduler = SchedulerStore(config.database_path)
     vault = VaultSearch(config.vault_path)
     wekan = None
@@ -55,10 +58,14 @@ def main() -> None:
             config.wekan_author_id,
             config.wekan_user_id,
             config.wekan_public_url,
+            config.wekan_mongo_url,
         )
-    tools = ToolExecutor(config, vault, wekan)
-    agent = TaskAgent(config, memory, tools)
-    app = build_application(config, store, memory, scheduler, agent, wekan)
+    tools = ToolExecutor(config, vault, wekan, prefs)
+    agent = TaskAgent(config, memory, tools, prefs, wekan)
+    speech = SpeechClient(config.stt_base_url, config.tts_base_url)
+    app = build_application(
+        config, store, memory, prefs, scheduler, agent, wekan, speech
+    )
 
     logging.info("Iniciando bot de Telegram...")
     app.run_polling(drop_pending_updates=True)

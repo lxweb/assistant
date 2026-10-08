@@ -28,6 +28,10 @@ class Config:
     wekan_author_id: str | None
     wekan_user_id: str | None
     wekan_public_url: str
+    wekan_mongo_url: str | None
+    stt_base_url: str | None
+    tts_base_url: str | None
+    voice_replies: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -89,4 +93,9 @@ class Config:
             wekan_author_id=os.getenv("WEKAN_AUTHOR_ID") or None,
             wekan_user_id=os.getenv("WEKAN_USER_ID") or None,
             wekan_public_url=os.getenv("WEKAN_PUBLIC_URL", "http://wekan.home.lan"),
+            wekan_mongo_url=os.getenv("WEKAN_MONGO_URL") or None,
+            stt_base_url=os.getenv("STT_BASE_URL") or None,
+            tts_base_url=os.getenv("TTS_BASE_URL") or None,
+            voice_replies=os.getenv("VOICE_REPLIES", "false").lower()
+            in ("1", "true", "yes", "on"),
         )

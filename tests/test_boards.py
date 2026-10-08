@@ -14,7 +14,7 @@ async def test_workspace_overview() -> None:
         "user1",
         "http://wekan.test",
     )
-    board = WekanBoard(id="b1", title="assistant")
+    board = WekanBoard(id="b1", title="assistant", workspace_id="ws1")
     lst = WekanList(id="l1", title="Pendiente")
 
     async def mock_request(method: str, path: str, json=None):
@@ -22,16 +22,31 @@ async def test_workspace_overview() -> None:
             return {"slug": "assistant"}
         if path.endswith("/cards"):
             return [{"_id": "c1"}]
+        if path.endswith("/swimlanes"):
+            return []
         return {}
 
     with patch.object(
-        client, "get_user", AsyncMock(return_value={"username": "lisandro"})
+        client,
+        "get_user",
+        AsyncMock(
+            return_value={
+                "username": "lisandro",
+                "profile": {
+                    "boardWorkspacesTree": [
+                        {"id": "ws1", "name": "LCRC", "children": []}
+                    ],
+                    "boardWorkspaceAssignments": {"b1": "ws1"},
+                },
+            }
+        ),
     ), patch.object(client, "list_boards", AsyncMock(return_value=[board])), patch.object(
         client, "list_lists", AsyncMock(return_value=[lst])
     ), patch.object(client, "_request", side_effect=mock_request):
         text = await client.workspace_overview()
 
-    assert "lisandro" in text
+    assert "LCRC" in text
+    assert "workspace" in text
     assert "assistant" in text
     assert "Pendiente (1)" in text
     assert "wekan.test/b/b1/assistant" in text

@@ -27,9 +27,26 @@ services:
       HEALTH_HOST: 0.0.0.0
       HEALTH_PORT: 8080
       WEKAN_API_URL: http://host.docker.internal:10550/api
+      WEKAN_MONGO_URL: ${WEKAN_MONGO_URL:-mongodb://ferretdb:27017/wekan}
+      STT_BASE_URL: ${STT_BASE_URL:-http://offline-ai-stt:8000}
+      TTS_BASE_URL: ${TTS_BASE_URL:-http://offline-ai-tts:8000}
+      VOICE_REPLIES: ${VOICE_REPLIES:-false}
     volumes:
       - assistant-data:/app/data
       - ${VAULT_HOST_PATH:-/home/lisandro/KnowledgeVault/KnowledgeVault}:/vault:ro
 
+    networks:
+      - default
+      - wekan-tier
+      - ai-net
+
 volumes:
   assistant-data:
+
+networks:
+  wekan-tier:
+    external: true
+    name: wekan_wekan-tier
+  ai-net:
+    external: true
+    name: offline-ai-microservices_ai-net

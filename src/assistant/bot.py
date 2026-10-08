@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 from datetime import datetime, timezone
 
@@ -16,7 +17,11 @@ from telegram.ext import (
 
 from assistant.agent import TaskAgent
 from assistant.config import Config
+from assistant.speech import SpeechClient
 from assistant.health import start_health_server
+from assistant.espacio_commands import espacio_command, espacios_command
+from assistant.tablero_commands import tablero_command, tableros_command, tareas_command
+from assistant.user_prefs import UserPrefsStore
 from assistant.wekan import WekanClient
 from assistant.memory import ConversationStore
 from assistant.scheduler import SchedulerStore, parse_schedule_args, scheduler_loop
@@ -35,16 +40,21 @@ HELP_TEXT = """\
 
 /start — Iniciar el bot
 /help — Mostrar esta ayuda
-/tareas — Ver tus últimas tareas
-/tarea \\<id\\> — Ver detalle de una tarea
+/procesos — Cola de mensajes procesados por el asistente
+/proceso \\<id\\> — Detalle de un proceso
 /status — Estado del bot y servicios
 /limpiar — Borrar memoria conversacional
 /recordar \\<cuándo\\> \\<tarea\\> — Programar recordatorio
 /recordatorios — Ver recordatorios pendientes
-/boards — Espacio de trabajo y tableros Wekan
+/boards — Workspaces y tableros Wekan (jerarquía)
+/espacios — Listar espacios de trabajo
+/espacio \\[nombre\\] — Detalle del espacio \\(tableros\\) y gestión
+/tableros — Tableros del espacio activo
+/tablero \\[nombre\\] — Detalle del tablero Wekan
+/tareas — Tareas kanban \\(Wekan\\) del tablero activo
 
 *Asignar tareas:*
-Envía un mensaje de texto con la tarea que quieres procesar.
+Envía un mensaje de texto o una nota de voz con la tarea que quieres procesar.
 
 *Recordatorios:*
 /recordar 30m Revisar el deploy
@@ -122,7 +132,7 @@ async def task_detail_command(
     user = update.effective_user
 
     if not context.args:
-        await update.message.reply_text("Uso: /tarea <id>")
+        await update.message.reply_text("Uso: /proceso <id>")
         return
 
     try:
@@ -145,9 +155,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     config: Config = context.bot_data["config"]
     store: TaskStore = context.bot_data["store"]
     memory: ConversationStore = context.bot_data["memory"]
+    prefs: UserPrefsStore = context.bot_data["prefs"]
     scheduler: SchedulerStore = context.bot_data["scheduler"]
 
     ollama_ok = await _check_ollama(config)
+    speech: SpeechClient = context.bot_data["speech"]
+    stt_ok = await speech.check_stt()
+    tts_ok = await speech.check_tts()
     wekan: WekanClient | None = context.bot_data.get("wekan")
     wekan_ok = (
         await wekan.check_connection()
@@ -157,6 +171,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     counts = await store.count_by_status()
     user = update.effective_user
     recent = await memory.get_recent(user.id, 1)
+    active_ws = await prefs.get_active_workspace(user.id)
     pending_reminders = await scheduler.list_by_user(user.id)
 
     wekan_line = (
@@ -168,10 +183,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "*Estado del asistente*",
         f"Modelo: `{config.openai_model}`",
         f"Ollama: {'✅ OK' if ollama_ok else '❌ no responde'}",
+        f"STT: {'✅ OK' if stt_ok else '❌ no configurado o no responde'}",
+        f"TTS: {'✅ OK' if tts_ok else '❌ no configurado o no responde'}",
+        f"Respuestas en voz: {'sí' if config.voice_replies else 'no'}",
         wekan_line,
         f"Vault: {'✅ ' + str(config.vault_path) if config.vault_path else '❌ no configurado'}",
         f"Tareas: {counts}",
         f"Memoria: {'activa' if recent else 'vacía'}",
+        f"Espacio Wekan activo: {active_ws or '—'}",
+        f"Tablero Wekan activo: {await prefs.get_active_board(user.id) or '—'}",
         f"Recordatorios pendientes: {len(pending_reminders)}",
     ]
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
@@ -268,6 +288,61 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _check_access(update, context):
+        return
+    speech: SpeechClient = context.bot_data["speech"]
+    config: Config = context.bot_data["config"]
+    user = update.effective_user
+    message = update.message
+    voice = message.voice or message.audio
+    if not voice:
+        return
+
+    if not speech.stt_enabled:
+        await message.reply_text(
+            "Las notas de voz requieren STT. Configura STT_BASE_URL en el asistente "
+            "y levanta el microservicio offline-ai-stt."
+        )
+        return
+
+    await message.reply_chat_action("typing")
+    try:
+        tg_file = await voice.get_file()
+        audio_bytes = await tg_file.download_as_bytearray()
+        filename = "voice.ogg"
+        if message.audio and message.audio.file_name:
+            filename = message.audio.file_name
+        text = await speech.transcribe(bytes(audio_bytes), filename=filename)
+    except ValueError as exc:
+        await message.reply_text(f"No pude entender el audio: {exc}")
+        return
+    except Exception:
+        logger.exception("Error transcribiendo voz")
+        await message.reply_text(
+            "Error al transcribir el audio. Revisa que el servicio STT esté activo."
+        )
+        return
+
+    store: TaskStore = context.bot_data["store"]
+    task = await store.create(user.id, text)
+
+    await message.reply_text(
+        f"🎤 Transcripción: {text}\n\n📋 Tarea #{task.id} recibida. Procesando...",
+    )
+
+    reply_voice = config.voice_replies and speech.tts_enabled
+    asyncio.create_task(
+        _process_task(
+            context.application,
+            task.id,
+            user.id,
+            text,
+            reply_with_voice=reply_voice,
+        )
+    )
+
+
 async def process_user_message(app, user_id: int, description: str) -> None:
     store: TaskStore = app.bot_data["store"]
     task = await store.create(user_id, description)
@@ -275,7 +350,12 @@ async def process_user_message(app, user_id: int, description: str) -> None:
 
 
 async def _process_task(
-    app, task_id: int, user_id: int, description: str
+    app,
+    task_id: int,
+    user_id: int,
+    description: str,
+    *,
+    reply_with_voice: bool = False,
 ) -> None:
     store: TaskStore = app.bot_data["store"]
     agent: TaskAgent = app.bot_data["agent"]
@@ -289,6 +369,21 @@ async def _process_task(
         await send_long_message(
             app.bot, user_id, text, parse_mode=ParseMode.MARKDOWN
         )
+        if reply_with_voice:
+            speech: SpeechClient = app.bot_data["speech"]
+            try:
+                snippet = result.strip()
+                if len(snippet) > 1500:
+                    snippet = snippet[:1497] + "..."
+                wav = await speech.synthesize_wav(snippet)
+                await app.bot.send_audio(
+                    chat_id=user_id,
+                    audio=io.BytesIO(wav),
+                    filename="respuesta.wav",
+                    caption=f"Tarea #{task.id} (voz)",
+                )
+            except Exception:
+                logger.exception("Error generando respuesta en voz para tarea %s", task_id)
     except Exception:
         logger.exception("Error procesando tarea %s", task_id)
         await store.update_status(
@@ -345,11 +440,13 @@ async def _health_status(application: Application) -> dict:
 async def _init_app(application: Application) -> None:
     store: TaskStore = application.bot_data["store"]
     memory: ConversationStore = application.bot_data["memory"]
+    prefs: UserPrefsStore = application.bot_data["prefs"]
     scheduler: SchedulerStore = application.bot_data["scheduler"]
     config: Config = application.bot_data["config"]
 
     await store.init()
     await memory.init()
+    await prefs.init()
     await scheduler.init()
 
     recovered = await store.recover_stuck()
@@ -373,9 +470,11 @@ def build_application(
     config: Config,
     store: TaskStore,
     memory: ConversationStore,
+    prefs: UserPrefsStore,
     scheduler: SchedulerStore,
     agent: TaskAgent,
     wekan: WekanClient | None = None,
+    speech: SpeechClient | None = None,
 ) -> Application:
     app = (
         Application.builder()
@@ -387,23 +486,31 @@ def build_application(
     app.bot_data["config"] = config
     app.bot_data["store"] = store
     app.bot_data["memory"] = memory
+    app.bot_data["prefs"] = prefs
     app.bot_data["scheduler"] = scheduler
     app.bot_data["agent"] = agent
     app.bot_data["wekan"] = wekan
+    app.bot_data["speech"] = speech or SpeechClient(None, None)
     app.bot_data["rate_limiter"] = RateLimiter(config.rate_limit_per_minute)
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("tareas", list_tasks_command))
-    app.add_handler(CommandHandler("tarea", task_detail_command))
+    app.add_handler(CommandHandler("procesos", list_tasks_command))
+    app.add_handler(CommandHandler("proceso", task_detail_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("limpiar", clear_memory_command))
     app.add_handler(CommandHandler("recordar", remind_command))
     app.add_handler(CommandHandler("recordatorios", list_reminders_command))
     app.add_handler(CommandHandler("boards", boards_command))
+    app.add_handler(CommandHandler("espacios", espacios_command))
+    app.add_handler(CommandHandler("espacio", espacio_command))
+    app.add_handler(CommandHandler("tableros", tableros_command))
+    app.add_handler(CommandHandler("tablero", tablero_command))
+    app.add_handler(CommandHandler("tareas", tareas_command))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_error_handler(_error_handler)
 
     return app
